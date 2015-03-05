@@ -19,7 +19,9 @@ import org.econtent.ExtractEContentFromMarc;
 import org.ini4j.Ini;
 import org.ini4j.InvalidFileFormatException;
 import org.ini4j.Profile.Section;
-import org.strands.StrandsProcessor;
+
+import org.vufind.DeleteDependentRecords;
+//import org.strands.StrandsProcessor;  not  used BA+ 08/13/2014
 
 
 /**
@@ -57,6 +59,10 @@ public class ReindexProcess {
 	private static boolean exportOPDSCatalog = true;
 	private static boolean updateAlphaBrowse = true;
 	private static String idsToProcess = null;
+	private static boolean DeleteERecordsinDBNotinMarcOrOD = false;
+	private static boolean callAPIAddOnly = false;
+	private static boolean AddNonMarcODRecords = false;
+	private static boolean OverDriveAvailabilityAPI = false;
 	
 	//Database connections and prepared statements
 	private static Connection vufindConn = null;
@@ -64,6 +70,8 @@ public class ReindexProcess {
 	
 	private static PreparedStatement updateCronLogLastUpdatedStmt;
 	private static PreparedStatement addNoteToCronLogStmt;
+	
+	
 	
 	/**
 	 * Starts the reindexing process
@@ -94,7 +102,7 @@ public class ReindexProcess {
 			reloadDefaultSchemas();
 		}
 		
-		//Process all reords (marc records, econtent that has been added to the database, and resources)
+		//Process all records (marc records, econtent that has been added to the database, and resources)
 		ArrayList<IRecordProcessor> recordProcessors;
 		recordProcessors = loadRecordProcesors();
 		try {
@@ -105,16 +113,22 @@ public class ReindexProcess {
 				// Updating resource information
 				// Saving records to strands - may need to move to resources if we are doing partial exports
 				processMarcRecords(recordProcessors);
-				
+								
 				//Process eContent records that have been saved to the database. 
 				processEContentRecords(recordProcessors);
-				
+								
 				//Do processing of resources as needed (for extraction of resources).
 				processResources(recordProcessors);
-				
+										
 				for (IRecordProcessor processor : recordProcessors){
 					processor.finish();
 				}
+				
+				//BA+++ added to cleanup dependent records from delete of items in econtent_record not in Marc or Overdrive
+				if ( isDeleteERecordsinDBNotinMarcOrOD() ) {
+					DeleteDependentRecords delRecs = new DeleteDependentRecords(logger, econtentConn, vufindConn);
+					delRecs.ExecuteDeletes();
+				}				
 			}
 		} catch (Error e) {
 			logger.error("Error processing reindex ", e);
@@ -226,12 +240,17 @@ public class ReindexProcess {
 			ExtractEContentFromMarc econtentExtractor = new ExtractEContentFromMarc();
 			if (econtentExtractor.init(configIni, serverName, reindexLogId, vufindConn, econtentConn, logger)){
 				supplementalProcessors.add(econtentExtractor);
+				if ( isDeleteERecordsinDBNotinMarcOrOD() ) {
+					int delRecs = econtentExtractor.deleteOverDriveTitlesInDb();
+					logger.debug("deleteOverDriveTitlesInDb  Not in Overdrive  - " + delRecs);
+				}
 			}else{
 				logger.error("Could not initialize econtentExtractor");
 				System.exit(1);
 			}
 		}
-		if (exportStrandsCatalog){
+		//Strands not used BA++ 8/13/2014
+		/*if (exportStrandsCatalog){
 			addNoteToCronLog("Initializing StrandsProcessor");
 			StrandsProcessor strandsProcessor = new StrandsProcessor();
 			if (strandsProcessor.init(configIni, serverName, reindexLogId, vufindConn, econtentConn, logger)){
@@ -240,7 +259,7 @@ public class ReindexProcess {
 				logger.error("Could not initialize strandsProcessor");
 				System.exit(1);
 			}
-		}
+		}*/
 		if (updateAlphaBrowse){
 			addNoteToCronLog("Initializing AlphaBrowseProcessor");
 			AlphaBrowseProcessor alphaBrowseProcessor = new AlphaBrowseProcessor();
@@ -253,7 +272,7 @@ public class ReindexProcess {
 		}
 		if (exportOPDSCatalog){
 			// 14) Generate OPDS catalog
-		}
+		}				
 		
 		return supplementalProcessors;
 	}
@@ -383,7 +402,7 @@ public class ReindexProcess {
 			logger.info("Processing exported marc records");
 			addNoteToCronLog("Processing exported marc records");
 			marcProcessor.processMarcFiles(marcProcessors, logger);
-		}
+			}
 	}
 
 	private static void runExportScript() {
@@ -534,6 +553,25 @@ public class ReindexProcess {
 		if (updateAlphaBrowseStr != null){
 			updateAlphaBrowse = Boolean.parseBoolean(updateAlphaBrowseStr);
 		}
+		String DeleteERecordsinDBNotinMarcOrODStr = configIni.get("Reindex", "DeleteERecordsinDBNotinMarcOrOD");
+		if (DeleteERecordsinDBNotinMarcOrODStr != null){
+			DeleteERecordsinDBNotinMarcOrOD = Boolean.parseBoolean(DeleteERecordsinDBNotinMarcOrODStr);
+		}
+		
+		String callAPIAddOnlyStr = configIni.get("Reindex", "callAPIAddOnly");
+		if (callAPIAddOnlyStr != null){
+			callAPIAddOnly = Boolean.parseBoolean(callAPIAddOnlyStr);
+		}
+		String AddNonMarcODRecordsStr = configIni.get("Reindex", "AddNonMarcODRecords");
+		if (AddNonMarcODRecordsStr != null){
+			AddNonMarcODRecords = Boolean.parseBoolean(AddNonMarcODRecordsStr);
+		}
+
+		String OverDriveAvailabilityAPIStr = configIni.get("Reindex", "OverDriveAvailabilityAPI");
+		if (OverDriveAvailabilityAPIStr != null){
+			OverDriveAvailabilityAPI = Boolean.parseBoolean(OverDriveAvailabilityAPIStr);
+		}
+		
 		
 		logger.info("Setting up database connections");
 		//Setup connections to vufind and econtent databases
@@ -600,7 +638,7 @@ public class ReindexProcess {
 		}
 		long elapsedTime = endTime - startTime;
 		float elapsedMinutes = (float)elapsedTime / (float)(60000); 
-		logger.info("Time elpased: " + elapsedMinutes + " minutes");
+		logger.info("Time elapsed: " + elapsedMinutes + " minutes");
 		
 		try {
 			PreparedStatement finishedStatement = vufindConn.prepareStatement("UPDATE reindex_log SET endTime = ? WHERE id = ?");
@@ -659,4 +697,41 @@ public class ReindexProcess {
 		}
 		return ini;
 	}
+	public static Connection getEcontentConn(){
+		return econtentConn;
+	}
+	public static Connection getVufindConn(){
+		return vufindConn;
+	}
+	public static boolean isDeleteERecordsinDBNotinMarcOrOD() {
+		return DeleteERecordsinDBNotinMarcOrOD;
+	}
+
+	public static void setCallAPIAddOnly(
+			boolean callAPIAddOnly) {
+		ReindexProcess.callAPIAddOnly = callAPIAddOnly;
+	}
+
+	public static boolean isCallAPIAddOnly() {
+		return callAPIAddOnly;
+	}
+	
+	public static void setAddNonMarcODRecords(
+			boolean AddNonMarcODRecords) {
+		ReindexProcess.AddNonMarcODRecords = AddNonMarcODRecords;
+	}
+
+	public static boolean isAddNonMarcODRecords() {
+		return AddNonMarcODRecords;
+	}
+	
+	public static void setOverDriveAvailabilityAPI(
+			boolean OverDriveAvailabilityAPI) {
+		ReindexProcess.OverDriveAvailabilityAPI = OverDriveAvailabilityAPI;
+	}
+
+	public static boolean isOverDriveAvailabilityAPI() {
+		return OverDriveAvailabilityAPI;
+	}
+	
 }
