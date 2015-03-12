@@ -91,6 +91,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	private PreparedStatement updateGutenbergItem;
 	
 	private PreparedStatement existingEContentRecordLinks;
+	private PreparedStatement existingEContentFormats;
 	private PreparedStatement addSourceUrl;
 	private PreparedStatement updateSourceUrl;
 	
@@ -225,6 +226,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			updateGutenbergItem = econtentConn.prepareStatement("UPDATE econtent_item SET filename = ?, folder = ?, link = ?, date_updated =? WHERE recordId = ? AND item_type = ? AND notes = ?");
 			
 			existingEContentRecordLinks = econtentConn.prepareStatement("SELECT id, link, libraryId, item_type from econtent_item WHERE recordId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+			existingEContentFormats = econtentConn.prepareStatement("SELECT id, externalFormatId, externalFormatNumeric, item_type from econtent_item WHERE recordId = ?", ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
 			addSourceUrl = econtentConn.prepareStatement("INSERT INTO econtent_item (recordId, item_type, notes, link, date_added, addedBy, date_updated, libraryId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
 			updateSourceUrl = econtentConn.prepareStatement("UPDATE econtent_item SET link = ?, date_updated = ?, item_type = ?, notes = ? WHERE id = ?");
 			
@@ -1273,6 +1275,26 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		//logger.debug("Adding overdrive items and availability");
 		loadOverDriveMetaData(overDriveInfo);
 		logger.debug("loaded meta data, found " + overDriveInfo.getItems().size() + " items.");
+		// ****Load an array with existing items to determine if there are any formats no longer available
+		ArrayList<LinkInfo> formatLinks = new ArrayList<LinkInfo>();
+		try {
+			existingEContentFormats.setLong(1, eContentRecordId);
+			ResultSet allExistingFormats = existingEContentFormats.executeQuery();
+			while (allExistingFormats.next()){
+				LinkInfo curLinkInfo = new LinkInfo();
+				curLinkInfo.setItemId(allExistingFormats.getLong("id"));
+				curLinkInfo.setLink(allExistingFormats.getString("externalFormatId"));
+				curLinkInfo.setLibraryId(allExistingFormats.getLong("externalFormatNumeric"));
+				curLinkInfo.setItemType(allExistingFormats.getString("item_type"));
+				formatLinks.add(curLinkInfo);
+			}
+		} catch (SQLException e) {
+			results.incErrors();
+			results.addNote("Could not load existing formats for eContentRecord " + eContentRecordId);
+			return;
+		}
+		logger.debug("Found " + formatLinks.size() + " existing formats");		
+		
 		for (OverDriveItem curItem : overDriveInfo.getItems().values()){
 			try {
 				//BA+++ Update OverDrive Record - add Author from loadMetaData
@@ -1294,6 +1316,17 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					updateOverDriveItem.setLong(9, new Date().getTime());
 					updateOverDriveItem.setLong(10, existingItemId);
 					updateOverDriveItem.executeUpdate();
+					//remove this format from the list of existing link so that we can track formats no longer available
+					LinkInfo formatLink = null;
+					for (LinkInfo tmpLinkInfo : formatLinks){
+						//logger.debug("Checking link for " + tmpLinkInfo.getLibraryId() + " format " + curItem.getFormatNumeric());
+						if (tmpLinkInfo.getLibraryId() == curItem.getFormatNumeric()){
+							formatLink = tmpLinkInfo;
+							//logger.debug("found format link, removing");
+						}
+					}
+					formatLinks.remove(formatLink);
+					
 				}else{
 					//the url does not exist, insert it
 					addOverDriveItem.setLong(1, eContentRecordId);
@@ -1315,6 +1348,18 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				logger.error("Error adding item to overdrive record " + eContentRecordId + " " + overDriveInfo.getId(), e);
 				results.addNote("Error adding item to overdrive record " + eContentRecordId + " " + overDriveInfo.getId() + " " + e.toString());
 				results.incErrors();
+			}
+		}
+		
+		//Remove any formats that are no longer available
+		logger.debug("There are " + formatLinks.size() + " formats that need to be deleted");
+		for (LinkInfo tmpLinkInfo : formatLinks){
+			try {
+				deleteEContentItem.setLong(1, tmpLinkInfo.getItemId());
+				deleteEContentItem.executeUpdate();
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
 			}
 		}
 		
