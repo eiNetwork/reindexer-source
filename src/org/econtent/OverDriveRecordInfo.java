@@ -29,6 +29,7 @@ public class OverDriveRecordInfo {
 	private HashSet<String> subjects = new HashSet<String>();
 	//items are formats in overdrive
 	private HashMap<String, OverDriveItem> items = new HashMap<String, OverDriveItem>();
+	private boolean isMetaDataLoaded = false;
 	
 	private boolean isShared = false;
 	public String getId() {
@@ -78,6 +79,12 @@ public class OverDriveRecordInfo {
 	}
 	public void setShared(boolean isShared) {
 		this.isShared = isShared;
+	}
+	public boolean isMetaDataLoaded() {
+		return isMetaDataLoaded;
+	}
+	public void setMetaDataLoaded(boolean isMetaDataLoaded) {
+		this.isMetaDataLoaded = isMetaDataLoaded;
 	}
 	public HashMap<Long, OverDriveAvailabilityInfo> getAvailabilityInfo() {
 		return availabilityInfo;

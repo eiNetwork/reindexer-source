@@ -461,6 +461,12 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	}
 	//BA++++  MetaData
 	private void loadOverDriveMetaData(OverDriveRecordInfo overDriveInfo) {
+		// skip this step if we've already done it
+		if( overDriveInfo.isMetaDataLoaded() ) {
+			logger.debug("Metadata has already been loaded for this record");
+			return;
+		}
+		
 		logger.debug("Loading metadata, " + overDriveInfo.getId() + " is in " + overDriveInfo.getCollections().size() + " collections");
 		//Get a list of the collections that own the record 
 		//long firstCollection = overDriveInfo.getCollections().iterator().next();
@@ -561,64 +567,67 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				}
 				//logger.debug("Set subjects");
 				
-				JSONArray formats = metaData.getJSONArray("formats");
-				for (int i = 0; i < formats.length(); i++){
-					JSONObject format = formats.getJSONObject(i);
-					OverDriveItem curItem = new OverDriveItem();
-					//logger.debug("Create new overdrive item");
-					curItem.setFormatId(format.getString("id"));
-					//logger.debug("format id " + format.getString("id"));
-					curItem.setFormat(format.getString("name"));
-					//logger.debug("format name " + format.getString("name"));
-					//Check for new formats for OverDrive and make sure the index doesn't halt when we do get a new one
-					Long numericFormat = overDriveFormatMap.get(curItem.getFormat());
-					if (numericFormat == null){
-						logger.error("Could not find numeric format for format " + curItem.getFormat());
-						results.addNote("Could not find numeric format for format " + curItem.getFormat());
-						results.incErrors();
-						System.out.println("Warning: new format for OverDrive found " + curItem.getFormat());
-						continue;
-					}
-					curItem.setFormatNumeric(overDriveFormatMap.get(curItem.getFormat()));
-					//logger.debug("Numeric format");
-					curItem.setFilename(format.getString("fileName"));
-					//logger.debug("Format filename " + format.getString("fileName"));
-					curItem.setPartCount(format.has("partCount") ? format.getLong("partCount") : 0L);
-					//logger.debug("part count" );
-					curItem.setSize(format.has("fileSize") ? format.getLong("fileSize") : 0L);
-					//logger.debug("file size" );
-					if (format.has("identifiers")){
-						StringBuffer identifierValue = new StringBuffer();
-						JSONArray identifiers = format.getJSONArray("identifiers");
-						for (int j = 0; j < identifiers.length(); j++){
-							JSONObject identifier = identifiers.getJSONObject(j);
-							if (identifierValue.length() > 0) {
-								identifierValue.append("\r\n");
-							}
-							identifierValue.append(identifier.getString("value"));
+				if (metaData.has("formats")){
+					JSONArray formats = metaData.getJSONArray("formats");
+					for (int i = 0; i < formats.length(); i++){
+						JSONObject format = formats.getJSONObject(i);
+						OverDriveItem curItem = new OverDriveItem();
+						//logger.debug("Create new overdrive item");
+						curItem.setFormatId(format.getString("id"));
+						//logger.debug("format id " + format.getString("id"));
+						curItem.setFormat(format.getString("name"));
+						//logger.debug("format name " + format.getString("name"));
+						//Check for new formats for OverDrive and make sure the index doesn't halt when we do get a new one
+						Long numericFormat = overDriveFormatMap.get(curItem.getFormat());
+						if (numericFormat == null){
+							logger.error("Could not find numeric format for format " + curItem.getFormat());
+							results.addNote("Could not find numeric format for format " + curItem.getFormat());
+							results.incErrors();
+							System.out.println("Warning: new format for OverDrive found " + curItem.getFormat());
+							continue;
 						}
-						curItem.setIdentifier(format.getJSONArray("identifiers").getJSONObject(0).getString("value"));
-						//logger.debug("Loaded format identifiers");
-					}
-					if (format.has("samples")){
-						JSONArray samples = format.getJSONArray("samples");
-						for (int j = 0; j < samples.length(); j++){
-							JSONObject sample = samples.getJSONObject(j);
-							if (j == 0){
-								curItem.setSampleName_1(sample.getString("source"));
-								curItem.setSampleUrl_1(sample.getString("url"));
-							}else if (j == 1){
-								curItem.setSampleName_2(sample.getString("source"));
-								curItem.setSampleUrl_2(sample.getString("url"));
-							}else{
-								logger.warn("Record " + overDriveInfo.getId() + " had more than 2 samples for format " + curItem.getFormat());
+						curItem.setFormatNumeric(overDriveFormatMap.get(curItem.getFormat()));
+						//logger.debug("Numeric format");
+						curItem.setFilename(format.getString("fileName"));
+						//logger.debug("Format filename " + format.getString("fileName"));
+						curItem.setPartCount(format.has("partCount") ? format.getLong("partCount") : 0L);
+						//logger.debug("part count" );
+						curItem.setSize(format.has("fileSize") ? format.getLong("fileSize") : 0L);
+						//logger.debug("file size" );
+						if (format.has("identifiers")){
+							StringBuffer identifierValue = new StringBuffer();
+							JSONArray identifiers = format.getJSONArray("identifiers");
+							for (int j = 0; j < identifiers.length(); j++){
+								JSONObject identifier = identifiers.getJSONObject(j);
+								if (identifierValue.length() > 0) {
+									identifierValue.append("\r\n");
+								}
+								identifierValue.append(identifier.getString("value"));
 							}
+							curItem.setIdentifier(format.getJSONArray("identifiers").getJSONObject(0).getString("value"));
+							//logger.debug("Loaded format identifiers");
 						}
-						//logger.debug("Loaded format sample link");
+						if (format.has("samples")){
+							JSONArray samples = format.getJSONArray("samples");
+							for (int j = 0; j < samples.length(); j++){
+								JSONObject sample = samples.getJSONObject(j);
+								if (j == 0){
+									curItem.setSampleName_1(sample.getString("source"));
+									curItem.setSampleUrl_1(sample.getString("url"));
+								}else if (j == 1){
+									curItem.setSampleName_2(sample.getString("source"));
+									curItem.setSampleUrl_2(sample.getString("url"));
+								}else{
+									logger.warn("Record " + overDriveInfo.getId() + " had more than 2 samples for format " + curItem.getFormat());
+								}
+							}
+							//logger.debug("Loaded format sample link");
+						}
+						overDriveInfo.getItems().put(curItem.getFormatId(), curItem);
+						//logger.debug("Set formats");
 					}
-					overDriveInfo.getItems().put(curItem.getFormatId(), curItem);
-					//logger.debug("Set formats");
 				}
+				overDriveInfo.setMetaDataLoaded(true);
 				//logger.debug("Done setting up overDriveInfo object");	
 			} catch (JSONException e) {
 				logger.error("Error loading meta data for title " + overDriveInfo.getId() + " " + e.toString());
