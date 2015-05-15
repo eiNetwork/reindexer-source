@@ -313,6 +313,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 			JSONObject libraryInfo = callOverDriveURL("http://api.overdrive.com/v1/libraries/" + accountId);
 			try {
 				String libraryName = libraryInfo.getString("name");
+				overDriveProductsKey = libraryInfo.getString("collectionToken");
 				String mainProductUrl = libraryInfo.getJSONObject("links").getJSONObject("products").getString("href");
 				//BA++ builds OverDrive array
 				loadProductsFromUrl(libraryName, mainProductUrl, false);
@@ -638,8 +639,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	}
 	
 	private JSONObject callOverDriveURL(String overdriveUrl) {
-		for (int connectTry = 1 ; connectTry < 5; connectTry++){
-			if (connectToOverDriveAPI(connectTry != 1)){
+		//for (int connectTry = 1 ; connectTry < 5; connectTry++){
+			if (connectToOverDriveAPI(false /*connectTry != 1*/)){
 			//Connect to the API to get our token
 				HttpURLConnection conn = null;
 				try {
@@ -659,6 +660,8 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					}
 					conn.setRequestMethod("GET");
 					conn.setRequestProperty("Authorization", overDriveAPITokenType + " " + overDriveAPIToken);
+					conn.setRequestProperty("User-Agent","eiNetwork Library Catalog");
+					conn.setRequestProperty("Host", "api.overdrive.com");
 					
 					StringBuffer response = new StringBuffer();
 					if (conn.getResponseCode() == 200) {
@@ -706,7 +709,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					}
 	
 				} catch (Exception e) {
-					if (connectTry == 3){
+					//if (connectTry == 3){
 						try {
 							logger.error("Error loading data from overdrive API.  Response Code:"+conn.getResponseCode()+" Error: "+conn.getResponseMessage() + " Header: "+conn.getHeaderFields().toString(), e );
 						} catch (IOException e1) {
@@ -714,16 +717,18 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 							logger.error("Error loading data from overdrive API.", e1);
 						}
 						return null;
-					}
+					//}
 				}
+/*
 			}else{
 				if (connectTry == 3){
 					return null;
 				}
+*/
 			}
-		}
-		logger.error("Failed to call overdrive url " +overdriveUrl + " in 3 calls");
-		results.addNote("Failed to call overdrive url " +overdriveUrl + " in 3 calls");
+		//}
+		logger.error("Failed to call overdrive url " +overdriveUrl); // + " in 3 calls");
+		results.addNote("Failed to call overdrive url " +overdriveUrl); // + " in 3 calls");
 		return null;
 	}
 
@@ -773,7 +778,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				JSONObject parser = new JSONObject(response.toString());
 				overDriveAPIToken = parser.getString("access_token");
 				overDriveAPITokenType = parser.getString("token_type");
-				overDriveAPIExpiration = parser.getLong("expires_in") - 10000;
+				overDriveAPIExpiration = new Date().getTime() + (parser.getLong("expires_in") * 1000) - 10000;
 				//logger.info("OverDrive token is " + overDriveAPIToken);
 			} else {
 				logger.error("Received error " + conn.getResponseCode() + " connecting to overdrive API" );
