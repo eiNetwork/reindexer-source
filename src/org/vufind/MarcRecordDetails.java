@@ -396,7 +396,11 @@ public class MarcRecordDetails {
 		if (!fieldVals.isEmpty()) {
 			if (fieldVals.size() == 1) {
 				String value = fieldVals.iterator().next();
-				indexMap.put(ixFldName, value);
+				if( value.contains("|") ) {
+					indexMap.put(ixFldName, value.split("\\|"));
+				} else {
+					indexMap.put(ixFldName, value);
+				}
 			} else
 				indexMap.put(ixFldName, fieldVals);
 		}
