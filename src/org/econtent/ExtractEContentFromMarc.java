@@ -196,6 +196,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		overDriveFormatMap.put("Microsoft eBook", 1L);
 		overDriveFormatMap.put("OverDrive WMA Audiobook", 25L);
 		overDriveFormatMap.put("OverDrive MP3 Audiobook", 425L);
+		overDriveFormatMap.put("OverDrive Listen", 625L);
 		overDriveFormatMap.put("OverDrive Music", 30L);
 		overDriveFormatMap.put("OverDrive Video", 35L);
 		overDriveFormatMap.put("Adobe PDF eBook", 50L);
@@ -373,7 +374,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 						OverDriveRecordInfo oldRecord = overDriveTitles.get(curRecord.getId());
 						oldRecord.getCollections().add(libraryId);
 					}else{
-						logger.debug("Loading record " + curRecord.getId());
+						//logger.debug("Loading record " + curRecord.getId());
 						overDriveTitles.put(curRecord.getId(), curRecord);
 					}
 				}
@@ -395,7 +396,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 	private OverDriveRecordInfo loadOverDriveRecordFromJSON(String libraryName, JSONObject curProduct) throws JSONException {
 		OverDriveRecordInfo curRecord = new OverDriveRecordInfo();
 		curRecord.setId(curProduct.getString("id"));
-		logger.debug("Processing overdrive title " + curRecord.getId());
+		//logger.debug("Processing overdrive title " + curRecord.getId());
 		//BA+++  sortTitle
 		curRecord.setTitle(curProduct.getString("title"));
 		curRecord.setSortTitle(curProduct.getString("sortTitle"));
@@ -627,7 +628,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 						overDriveInfo.getItems().put(curItem.getFormatId(), curItem);
 						//logger.debug("Set formats");
 					}
-				}
+				}				
 				overDriveInfo.setMetaDataLoaded(true);
 				//logger.debug("Done setting up overDriveInfo object");	
 			} catch (JSONException e) {
@@ -726,7 +727,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 				}
 */
 			}
-		//}
+//		}
 		logger.error("Failed to call overdrive url " +overdriveUrl); // + " in 3 calls");
 		results.addNote("Failed to call overdrive url " +overdriveUrl); // + " in 3 calls");
 		return null;
@@ -775,7 +776,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 					response.append(line);
 				}
 				rd.close();
-				JSONObject parser = new JSONObject(response.toString());
+				JSONObject parser = new JSONObject(response.toString().trim());
 				overDriveAPIToken = parser.getString("access_token");
 				overDriveAPITokenType = parser.getString("token_type");
 				overDriveAPIExpiration = new Date().getTime() + (parser.getLong("expires_in") * 1000) - 10000;
@@ -1863,7 +1864,7 @@ public class ExtractEContentFromMarc implements IMarcRecordProcessor, IRecordPro
 		if ( overDriveTitles.size() > 45000 )
 		{			
 			for (String overDriveId : overDriveIdsFromEContent.keySet()){
-				logger.debug("Check econtent_record by external ID " + overDriveId);
+				//logger.debug("Check econtent_record by external ID " + overDriveId);
 				try {
 					if ( ! overDriveTitles.containsKey(overDriveId) ){
 						removeEContentRecordFromDb(overDriveId);
